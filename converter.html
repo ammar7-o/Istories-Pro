@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pdf → multi-json story splitter · smart paragraph detection</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background: #0a0c10;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      color: #e5e9f0;
+    }
+
+    .glass-panel {
+      background: rgba(18, 22, 28, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid #2d374b;
+      border-radius: 2rem;
+      box-shadow: 0 25px 40px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(100, 200, 255, 0.1) inset;
+      width: 100%;
+      max-width: 1200px;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    h1 span {
+      background: #2a3a4f;
+      color: #b3e0ff;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 0.2rem 0.9rem;
+      border-radius: 40px;
+      border: 1px solid #3e556b;
+    }
+
+    .sub {
+      color: #8a9bb5;
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      border-left: 3px solid #3e5f7a;
+      padding-left: 1rem;
+    }
+
+    .drop-area {
+      background: #131a24;
+      border-radius: 2rem;
+      border: 1px dashed #3c5068;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      transition: all 0.2s;
+      margin-bottom: 2rem;
+      cursor: pointer;
+    }
+
+    .drop-area:hover {
+      background: #1b2533;
+      border-color: #5f7c9e;
+    }
+
+    .drop-area.drag-over {
+      background: #1f2c3b;
+      border-color: #7aaae2;
+      box-shadow: 0 0 0 2px #1e4f7a;
+    }
+
+    .file-info {
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      background: #0f171faa;
+      padding: 0.7rem 1.2rem;
+      border-radius: 60px;
+      display: inline-block;
+      border: 1px solid #2d3f53;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: #1f2b35;
+      border-radius: 10px;
+      margin: 1rem 0;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #4f96cf, #76c2ff);
+      transition: width 0.2s;
+    }
+
+    .status {
+      color: #b0c5dd;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+
+    /* Paragraph Sensitivity Section */
+    .sensitivity-section {
+      background: #0f1722dd;
+      border-radius: 1.5rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid #2a374b;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .section-header h3 {
+      color: #cbd5e6;
+      font-weight: 400;
+      font-size: 1.2rem;
+    }
+
+    .sensitivity-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .sensitivity-card {
+      background: #1a2533;
+      border-radius: 1.2rem;
+      padding: 1.2rem;
+      border: 1px solid #2f4057;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .sensitivity-card:hover {
+      background: #1f2d3f;
+      border-color: #4f96cf;
+    }
+
+    .sensitivity-card.active {
+      border-color: #4f96cf;
+      background: #1f3347;
+      box-shadow: 0 0 0 1px #4f96cf;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .card-header h4 {
+      color: #eef5fc;
+      font-size: 1.1rem;
+    }
+
+    .card-desc {
+      color: #8a9bb5;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    .card-stats {
+      display: flex;
+      justify-content: space-between;
+      color: #b0c5dd;
+      font-size: 0.8rem;
+    }
+
+    .slider-container {
+      background: #1a2533;
+      border-radius: 1rem;
+      padding: 1rem;
+      margin-top: 1rem;
+    }
+
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      color: #a0b3cf;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+
+    input[type=range] {
+      width: 100%;
+      height: 6px;
+      background: #2d3f53;
+      border-radius: 3px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      background: #4f96cf;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #b3e0ff;
+    }
+
+    .param-row {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .param-item {
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .param-item label {
+      display: block;
+      color: #a0b3cf;
+      font-size: 0.8rem;
+      margin-bottom: 0.3rem;
+    }
+
+    .param-item input {
+      width: 100%;
+      background: #1c2735;
+      border: 1px solid #334b62;
+      border-radius: 40px;
+      padding: 0.5rem;
+      color: #eef5fc;
+      font-size: 0.9rem;
+    }
+
+    .stats-badge {
+      background: #264a6b;
+      color: white;
+      padding: 0.2rem 0.8rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+    }
+
+    /* Split controls */
+    .split-controls {
+      background: #0f1722dd;
+      border-radius: 1.5rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid #2a374b;
+    }
+
+    .toggle-switch {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .toggle-switch label {
+      position: relative;
+      display: inline-block;
+      width: 60px;
+      height: 30px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #2d3f53;
+      transition: .2s;
+      border-radius: 30px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 4px;
+      bottom: 4px;
+      background-color: #8a9bb5;
+      transition: .2s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: #4f96cf;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(30px);
+      background-color: white;
+    }
+
+    .split-options {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .option-group label {
+      color: #a0b3cf;
+      font-size: 0.9rem;
+    }
+
+    .option-group select, .option-group input {
+      background: #1c2735;
+      border: 1px solid #334b62;
+      border-radius: 40px;
+      padding: 0.6rem 1rem;
+      color: #eef5fc;
+      min-width: 150px;
+    }
+
+    .two-col {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .col {
+      flex: 1 1 350px;
+      background: #0f1722dd;
+      border-radius: 1.5rem;
+      padding: 1.5rem;
+      border: 1px solid #2a374b;
+    }
+
+    .col h2 {
+      font-size: 1.3rem;
+      font-weight: 400;
+      color: #cbd5e6;
+      margin-bottom: 1.2rem;
+      border-bottom: 1px solid #2c4055;
+      padding-bottom: 0.5rem;
+    }
+
+    .meta-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .meta-item label {
+      width: 80px;
+      color: #a0b3cf;
+    }
+
+    .meta-item input, .meta-item select {
+      flex: 1;
+      background: #1c2735;
+      border: 1px solid #334b62;
+      border-radius: 40px;
+      padding: 0.5rem 1rem;
+      color: #eef5fc;
+    }
+
+    .cover-row {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      background: #1a2533;
+      padding: 0.8rem 1.2rem;
+      border-radius: 3rem;
+      margin-top: 1rem;
+    }
+
+    .cover-row input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #b5d0f0;
+    }
+
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 1rem 0;
+      padding: 0.8rem;
+      background: #1a2533;
+      border-radius: 2rem;
+    }
+
+    .json-pre {
+      background: #030609;
+      padding: 1rem;
+      border-radius: 1rem;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.75rem;
+      color: #c0dbff;
+      max-height: 250px;
+      overflow: auto;
+      white-space: pre-wrap;
+      border: 1px solid #2c4158;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+
+    button {
+      background: #264a6b;
+      border: none;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: 40px;
+      font-weight: 500;
+      font-size: 0.95rem;
+      border: 1px solid #3d73a2;
+      cursor: pointer;
+      transition: 0.1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    button:hover:not(:disabled) {
+      background: #2e5a83;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #2d3f53;
+      border-color: #4d627a;
+    }
+
+    .files-list {
+      margin-top: 1rem;
+      max-height: 150px;
+      overflow-y: auto;
+      background: #0e1722;
+      border-radius: 1rem;
+      padding: 0.5rem;
+    }
+
+    .file-item {
+      padding: 0.4rem 0.8rem;
+      border-bottom: 1px solid #2a374b;
+      color: #b0c5dd;
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .message {
+      color: #8fc9b0;
+      margin-top: 0.5rem;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+<div class="glass-panel">
+  <h1>◈ pdf → multi-json story splitter <span>smart paragraph detection v3.0</span></h1>
+  <div class="sub">intelligent paragraph merging · 5 sensitivity levels · Arabic & any language support</div>
+
+  <!-- drop zone -->
+  <div class="drop-area" id="dropZone">
+    <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+    <div class="file-input-label">
+      <div class="upload-icon">📂⤴️</div>
+      <div class="file-hint">click or drop .pdf (any language)</div>
+    </div>
+    <div id="fileInfo" class="file-info">no file selected</div>
+  </div>
+
+  <!-- progress -->
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="status" id="statusMsg">🌙 ready — upload a PDF</div>
+
+  <!-- Paragraph Sensitivity Section -->
+  <div class="sensitivity-section">
+    <div class="section-header">
+      <h3>📝 Paragraph Detection Sensitivity</h3>
+      <span class="stats-badge" id="liveStats">Lines: 0 → Paragraphs: 0</span>
+    </div>
+
+    <!-- Preset Cards -->
+    <div class="sensitivity-grid">
+      <div class="sensitivity-card" id="presetVeryLow">
+        <div class="card-header">
+          <h4>🌊 Very Low</h4>
+        </div>
+        <div class="card-desc">Maximum merging · Treats most lines as single paragraph · Best for dense text</div>
+        <div class="card-stats">
+          <span>Gap: 20px</span>
+          <span>Indent: 15px</span>
+          <span>Min: 150 chars</span>
+        </div>
+      </div>
+
+      <div class="sensitivity-card active" id="presetLow">
+        <div class="card-header">
+          <h4>🍃 Low</h4>
+        </div>
+        <div class="card-desc">Aggressive merging · Creates natural paragraphs · Recommended for most PDFs</div>
+        <div class="card-stats">
+          <span>Gap: 15px</span>
+          <span>Indent: 10px</span>
+          <span>Min: 100 chars</span>
+        </div>
+      </div>
+
+      <div class="sensitivity-card" id="presetMedium">
+        <div class="card-header">
+          <h4>⚖️ Medium</h4>
+        </div>
+        <div class="card-desc">Balanced · Respects paragraph breaks · Good for well-formatted PDFs</div>
+        <div class="card-stats">
+          <span>Gap: 12px</span>
+          <span>Indent: 8px</span>
+          <span>Min: 80 chars</span>
+        </div>
+      </div>
+
+      <div class="sensitivity-card" id="presetHigh">
+        <div class="card-header">
+          <h4>🔍 High</h4>
+        </div>
+        <div class="card-desc">Minimal merging · Preserves most line breaks · For poetry/scripts</div>
+        <div class="card-stats">
+          <span>Gap: 8px</span>
+          <span>Indent: 5px</span>
+          <span>Min: 50 chars</span>
+        </div>
+      </div>
+
+      <div class="sensitivity-card" id="presetVeryHigh">
+        <div class="card-header">
+          <h4>🔬 Very High</h4>
+        </div>
+        <div class="card-desc">Almost no merging · Every line is a paragraph · Maximum separation</div>
+        <div class="card-stats">
+          <span>Gap: 4px</span>
+          <span>Indent: 2px</span>
+          <span>Min: 30 chars</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fine-tuning Controls -->
+    <div class="slider-container">
+      <div class="slider-label">
+        <span>Vertical Gap Threshold (px)</span>
+        <span id="gapValue">15px</span>
+      </div>
+      <input type="range" id="gapThreshold" min="2" max="30" value="15" step="1">
+
+      <div class="slider-label">
+        <span>Indentation Threshold (px)</span>
+        <span id="indentValue">10px</span>
+      </div>
+      <input type="range" id="indentThreshold" min="1" max="25" value="10" step="1">
+
+      <div class="param-row">
+        <div class="param-item">
+          <label>Min Paragraph Length</label>
+          <input type="number" id="minLength" min="20" max="500" value="100">
+        </div>
+        <div class="param-item">
+          <label>Line Grouping</label>
+          <select id="lineGrouping">
+            <option value="strict">Strict (exact Y)</option>
+            <option value="normal" selected>Normal (tolerance 3px)</option>
+            <option value="loose">Loose (tolerance 8px)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Splitting Controls -->
+  <div class="split-controls">
+    <div class="section-header">
+      <h3>📦 JSON splitting options</h3>
+      <div class="toggle-switch">
+        <span>Split into multiple files?</span>
+        <label>
+          <input type="checkbox" id="splitToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    
+    <div class="split-options">
+      <div class="option-group">
+        <label>Split by</label>
+        <select id="splitMethod">
+          <option value="paragraphs">Number of paragraphs</option>
+          <option value="wordCount">Word count</option>
+        </select>
+      </div>
+      
+      <div class="option-group">
+        <label id="splitValueLabel">Paragraphs per file</label>
+        <input type="number" id="splitValue" min="1" max="1000" value="30">
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- left: metadata -->
+    <div class="col">
+      <h2>📋 story metadata</h2>
+      <div class="meta-grid">
+        <div class="meta-item"><label>title</label><input type="text" id="titleInput" value="The Magic Garden"></div>
+        <div class="meta-item"><label>author</label><input type="text" id="authorInput" value="Istories"></div>
+        <div class="meta-item"><label>level</label>
+          <select id="levelSelect">
+            <option value="beginner">beginner</option>
+            <option value="intermediate" selected>intermediate</option>
+            <option value="advanced">advanced</option>
+          </select>
+        </div>
+      </div>
+      <div class="cover-row">
+        <span>🖼️ cover URL</span>
+        <input type="text" id="coverInput" value="https://images.unsplash.com/photo-1578301978693-85fa9c0320b9">
+      </div>
+      
+      <div class="stats-row">
+        <div><span>📊 Words:</span> <span id="totalWords">0</span></div>
+        <div><span>📑 Paragraphs:</span> <span id="totalParas">0</span></div>
+      </div>
+    </div>
+
+    <!-- right: preview -->
+    <div class="col">
+      <h2>🔍 preview</h2>
+      <div id="jsonPreview" class="json-pre">{
+  "content": []
+}</div>
+      
+      <div class="button-group">
+        <button id="processBtn" disabled>⚡ process PDF</button>
+        <button id="downloadAllBtn" disabled class="secondary">📦 download ZIP</button>
+        <button id="copyBtn" disabled>📋 copy</button>
+      </div>
+      
+      <div id="filesList" class="files-list" style="display: none;"></div>
+      <div id="message" class="message"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+  // DOM elements
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const fileInfo = document.getElementById('fileInfo');
+  const progressFill = document.getElementById('progressFill');
+  const statusMsg = document.getElementById('statusMsg');
+  const processBtn = document.getElementById('processBtn');
+  const downloadAllBtn = document.getElementById('downloadAllBtn');
+  const copyBtn = document.getElementById('copyBtn');
+  
+  const titleInput = document.getElementById('titleInput');
+  const authorInput = document.getElementById('authorInput');
+  const levelSelect = document.getElementById('levelSelect');
+  const coverInput = document.getElementById('coverInput');
+  
+  // Sensitivity elements
+  const presetVeryLow = document.getElementById('presetVeryLow');
+  const presetLow = document.getElementById('presetLow');
+  const presetMedium = document.getElementById('presetMedium');
+  const presetHigh = document.getElementById('presetHigh');
+  const presetVeryHigh = document.getElementById('presetVeryHigh');
+  const gapThreshold = document.getElementById('gapThreshold');
+  const gapValue = document.getElementById('gapValue');
+  const indentThreshold = document.getElementById('indentThreshold');
+  const indentValue = document.getElementById('indentValue');
+  const minLength = document.getElementById('minLength');
+  const lineGrouping = document.getElementById('lineGrouping');
+  const liveStats = document.getElementById('liveStats');
+  
+  // Split elements
+  const splitToggle = document.getElementById('splitToggle');
+  const splitMethod = document.getElementById('splitMethod');
+  const splitValue = document.getElementById('splitValue');
+  const splitValueLabel = document.getElementById('splitValueLabel');
+  
+  const jsonPreview = document.getElementById('jsonPreview');
+  const totalWords = document.getElementById('totalWords');
+  const totalParas = document.getElementById('totalParas');
+  const filesList = document.getElementById('filesList');
+  const message = document.getElementById('message');
+
+  // State
+  let currentFile = null;
+  let rawLines = []; // Array of {text, y, page}
+  let mergedParagraphs = [];
+  let generatedFiles = [];
+
+  // Preset configurations
+  const presets = {
+    veryLow: { gap: 20, indent: 15, minLen: 150, grouping: 'loose' },
+    low: { gap: 15, indent: 10, minLen: 100, grouping: 'normal' },
+    medium: { gap: 12, indent: 8, minLen: 80, grouping: 'normal' },
+    high: { gap: 8, indent: 5, minLen: 50, grouping: 'strict' },
+    veryHigh: { gap: 4, indent: 2, minLen: 30, grouping: 'strict' }
+  };
+
+  // Apply preset
+  function applyPreset(preset) {
+    const p = presets[preset];
+    gapThreshold.value = p.gap;
+    indentThreshold.value = p.indent;
+    minLength.value = p.minLen;
+    lineGrouping.value = p.grouping;
+    
+    gapValue.textContent = p.gap + 'px';
+    indentValue.textContent = p.indent + 'px';
+    
+    // Update active class
+    [presetVeryLow, presetLow, presetMedium, presetHigh, presetVeryHigh].forEach(el => el.classList.remove('active'));
+    document.getElementById(`preset${preset.charAt(0).toUpperCase() + preset.slice(1)}`).classList.add('active');
+    
+    if (rawLines.length > 0) mergeLinesAndUpdate();
+  }
+
+  // Preset click handlers
+  presetVeryLow.addEventListener('click', () => applyPreset('veryLow'));
+  presetLow.addEventListener('click', () => applyPreset('low'));
+  presetMedium.addEventListener('click', () => applyPreset('medium'));
+  presetHigh.addEventListener('click', () => applyPreset('high'));
+  presetVeryHigh.addEventListener('click', () => applyPreset('veryHigh'));
+
+  // Update displayed values
+  gapThreshold.addEventListener('input', () => {
+    gapValue.textContent = gapThreshold.value + 'px';
+    if (rawLines.length > 0) mergeLinesAndUpdate();
+  });
+  
+  indentThreshold.addEventListener('input', () => {
+    indentValue.textContent = indentThreshold.value + 'px';
+    if (rawLines.length > 0) mergeLinesAndUpdate();
+  });
+  
+  minLength.addEventListener('input', () => {
+    if (rawLines.length > 0) mergeLinesAndUpdate();
+  });
+  
+  lineGrouping.addEventListener('change', () => {
+    if (rawLines.length > 0) mergeLinesAndUpdate();
+  });
+
+  // SMART PARAGRAPH MERGING
+  function mergeLinesIntoParagraphs(lines) {
+    if (!lines || lines.length === 0) return [];
+    
+    const gap = parseInt(gapThreshold.value);
+    const indent = parseInt(indentThreshold.value);
+    const minParaLen = parseInt(minLength.value);
+    const grouping = lineGrouping.value;
+    
+    // Sort lines by Y position (top to bottom)
+    const sortedLines = [...lines].sort((a, b) => b.y - a.y);
+    
+    const paragraphs = [];
+    let currentPara = [];
+    let lastY = null;
+    let lastX = null;
+    
+    for (let i = 0; i < sortedLines.length; i++) {
+      const line = sortedLines[i];
+      const text = line.text.trim();
+      if (text.length === 0) continue;
+      
+      if (currentPara.length === 0) {
+        // Start first paragraph
+        currentPara.push(text);
+        lastY = line.y;
+        lastX = line.x || 0;
+        continue;
+      }
+      
+      // Calculate differences
+      const yDiff = Math.abs(line.y - lastY);
+      const xDiff = line.x ? Math.abs(line.x - lastX) : 0;
+      
+      // Determine if this is a new paragraph
+      let isNewPara = false;
+      
+      // Large vertical gap indicates paragraph break
+      if (yDiff > gap) {
+        isNewPara = true;
+      }
+      // Indentation indicates new paragraph
+      else if (xDiff > indent && line.x > lastX) {
+        isNewPara = true;
+      }
+      // If grouping is strict, also check for very small gaps
+      else if (grouping === 'strict' && yDiff > 5) {
+        isNewPara = true;
+      }
+      // If grouping is loose, merge more aggressively
+      else if (grouping === 'loose' && yDiff < 3) {
+        // Definitely same paragraph
+        isNewPara = false;
+      }
+      
+      if (isNewPara && currentPara.length > 0) {
+        // Save current paragraph
+        const paraText = currentPara.join(' ').replace(/\s+/g, ' ').trim();
+        if (paraText.length >= minParaLen) {
+          paragraphs.push(paraText);
+        }
+        currentPara = [text];
+      } else {
+        currentPara.push(text);
+      }
+      
+      lastY = line.y;
+      lastX = line.x || lastX;
+    }
+    
+    // Add last paragraph
+    if (currentPara.length > 0) {
+      const paraText = currentPara.join(' ').replace(/\s+/g, ' ').trim();
+      if (paraText.length >= minParaLen) {
+        paragraphs.push(paraText);
+      }
+    }
+    
+    // Second pass: merge very short paragraphs if they're consecutive
+    if (grouping !== 'strict') {
+      const merged = [];
+      for (let i = 0; i < paragraphs.length; i++) {
+        if (i < paragraphs.length - 1 && 
+            paragraphs[i].length < minParaLen * 0.7 && 
+            paragraphs[i+1].length < minParaLen * 0.7) {
+          merged.push(paragraphs[i] + ' ' + paragraphs[i+1]);
+          i++;
+        } else {
+          merged.push(paragraphs[i]);
+        }
+      }
+      return merged;
+    }
+    
+    return paragraphs;
+  }
+
+  // Extract lines with positions
+  async function extractLinesFromPDF(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, useSystemFonts: true });
+    const pdf = await loadingTask.promise;
+    const numPages = pdf.numPages;
+    const allLines = [];
+    
+    for (let i = 1; i <= numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      
+      // Group by Y position with tolerance
+      const tolerance = lineGrouping.value === 'strict' ? 1 : 
+                       lineGrouping.value === 'normal' ? 3 : 8;
+      
+      const lineMap = new Map();
+      
+      for (const item of textContent.items) {
+        const y = Math.round(item.transform[5] / tolerance) * tolerance;
+        const x = item.transform[4];
+        if (!lineMap.has(y)) {
+          lineMap.set(y, { texts: [], x: x });
+        }
+        lineMap.get(y).texts.push(item.str);
+      }
+      
+      // Convert to lines
+      const pageLines = Array.from(lineMap.entries())
+        .sort((a, b) => b[0] - a[0])
+        .map(([y, data]) => ({
+          y: y,
+          x: data.x,
+          text: data.texts.join(' ').trim(),
+          page: i
+        }));
+      
+      allLines.push(...pageLines.filter(l => l.text.length > 2));
+      
+      progressFill.style.width = `${(i / numPages) * 100}%`;
+      statusMsg.textContent = `📄 page ${i}/${numPages} · ${allLines.length} lines`;
+    }
+    
+    return allLines;
+  }
+
+  function mergeLinesAndUpdate() {
+    mergedParagraphs = mergeLinesIntoParagraphs(rawLines);
+    liveStats.textContent = `Lines: ${rawLines.length} → Paragraphs: ${mergedParagraphs.length}`;
+    totalParas.textContent = mergedParagraphs.length;
+    totalWords.textContent = mergedParagraphs.reduce((acc, p) => acc + p.split(/\s+/).length, 0);
+    
+    generateJsonFiles();
+  }
+
+  function generateJsonFiles() {
+    if (mergedParagraphs.length === 0) return;
+    
+    const baseTitle = titleInput.value.trim() || 'Story';
+    const author = authorInput.value.trim() || 'Unknown';
+    const level = levelSelect.value;
+    const cover = coverInput.value.trim() || '';
+    
+    const shouldSplit = splitToggle.checked;
+    const method = splitMethod.value;
+    const value = parseInt(splitValue.value) || 30;
+    
+    let chunks = [];
+    
+    if (!shouldSplit) {
+      chunks = [mergedParagraphs];
+    } else if (method === 'paragraphs') {
+      for (let i = 0; i < mergedParagraphs.length; i += value) {
+        chunks.push(mergedParagraphs.slice(i, i + value));
+      }
+    } else {
+      // Split by word count
+      let currentChunk = [];
+      let currentWords = 0;
+      for (const para of mergedParagraphs) {
+        const paraWords = para.split(/\s+/).length;
+        if (currentWords + paraWords > value && currentChunk.length > 0) {
+          chunks.push(currentChunk);
+          currentChunk = [para];
+          currentWords = paraWords;
+        } else {
+          currentChunk.push(para);
+          currentWords += paraWords;
+        }
+      }
+      if (currentChunk.length > 0) chunks.push(currentChunk);
+    }
+    
+    generatedFiles = chunks.map((chunk, index) => {
+      const id = `story_${Date.now()}_${Math.random().toString(36).substring(2, 8)}` + 
+                 (chunks.length > 1 ? `_part${index + 1}` : '');
+      const title = chunks.length > 1 ? `${baseTitle} - Part ${index + 1}` : baseTitle;
+      
+      const obj = {
+        id: id,
+        title: title,
+        level: level,
+        cover: cover,
+        coverType: 'image',
+        content: chunk,
+        author: author,
+        wordCount: chunk.reduce((acc, p) => acc + p.split(/\s+/).length, 0),
+        exportedFrom: 'IStories',
+        version: '1.0'
+      };
+      
+      return {
+        name: `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`,
+        content: JSON.stringify(obj, null, 2),
+        paragraphs: chunk.length
+      };
+    });
+    
+    // Update preview
+    if (generatedFiles.length > 0) {
+      jsonPreview.textContent = generatedFiles[0].content;
+      
+      if (generatedFiles.length > 1) {
+        filesList.style.display = 'block';
+        filesList.innerHTML = generatedFiles.map(f => `
+          <div class="file-item">
+            <span>📄 ${f.name}</span>
+            <span>${f.paragraphs}p</span>
+          </div>
+        `).join('');
+      } else {
+        filesList.style.display = 'none';
+      }
+      
+      downloadAllBtn.disabled = false;
+      copyBtn.disabled = false;
+    }
+  }
+
+  async function handleFile(file) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      statusMsg.textContent = '❌ PDF files only';
+      return;
+    }
+
+    currentFile = file;
+    fileInfo.textContent = `📁 ${file.name}`;
+    processBtn.disabled = false;
+    progressFill.style.width = '0%';
+    
+    const suggestedTitle = file.name.replace(/\.pdf$/i, '').replace(/[_-]/g, ' ');
+    titleInput.value = suggestedTitle.replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  processBtn.addEventListener('click', async () => {
+    if (!currentFile) return;
+    
+    processBtn.disabled = true;
+    statusMsg.textContent = '⏳ Extracting text...';
+    
+    try {
+      rawLines = await extractLinesFromPDF(currentFile);
+      mergeLinesAndUpdate();
+      statusMsg.textContent = `✅ Extracted ${rawLines.length} lines → ${mergedParagraphs.length} paragraphs`;
+    } catch (err) {
+      statusMsg.textContent = `❌ Error: ${err.message}`;
+    }
+    
+    processBtn.disabled = false;
+  });
+
+  downloadAllBtn.addEventListener('click', async () => {
+    if (generatedFiles.length === 0) return;
+    
+    const zip = new JSZip();
+    generatedFiles.forEach(f => zip.file(f.name, f.content));
+    
+    const metadata = {
+      totalFiles: generatedFiles.length,
+      totalParagraphs: mergedParagraphs.length,
+      totalWords: mergedParagraphs.reduce((acc, p) => acc + p.split(/\s+/).length, 0),
+      sensitivity: {
+        gap: gapThreshold.value,
+        indent: indentThreshold.value,
+        minLength: minLength.value,
+        grouping: lineGrouping.value
+      }
+    };
+    zip.file('_metadata.json', JSON.stringify(metadata, null, 2));
+    
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${titleInput.value.replace(/[^a-z0-9]/gi, '_')}_story.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    message.textContent = '📦 ZIP downloaded';
+  });
+
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(jsonPreview.textContent);
+    message.textContent = '✓ Copied!';
+    setTimeout(() => message.textContent = '', 2000);
+  });
+
+  // Input event listeners
+  titleInput.addEventListener('input', () => generatedFiles.length > 0 && generateJsonFiles());
+  authorInput.addEventListener('input', () => generatedFiles.length > 0 && generateJsonFiles());
+  levelSelect.addEventListener('change', () => generatedFiles.length > 0 && generateJsonFiles());
+  coverInput.addEventListener('input', () => generatedFiles.length > 0 && generateJsonFiles());
+  splitToggle.addEventListener('change', () => mergedParagraphs.length > 0 && generateJsonFiles());
+  splitMethod.addEventListener('change', () => mergedParagraphs.length > 0 && generateJsonFiles());
+  splitValue.addEventListener('input', () => mergedParagraphs.length > 0 && generateJsonFiles());
+
+  // Drag and drop
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => e.preventDefault() || dropZone.classList.add('drag-over'));
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) handleFile(e.target.files[0]);
+  });
+
+  // Initialize
+  processBtn.disabled = true;
+  downloadAllBtn.disabled = true;
+  copyBtn.disabled = true;
+  gapValue.textContent = gapThreshold.value + 'px';
+  indentValue.textContent = indentThreshold.value + 'px';
+})();
+</script>
+</body>
+</html>
