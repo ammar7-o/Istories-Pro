@@ -271,6 +271,37 @@ async function handleFileSelect(event) {
                 break;
 
 
+            case 'js':
+                const jsReader = new FileReader();
+                jsReader.onload = (e) => {
+                    try {
+                        const code = e.target.result;
+                        const backup = window.storiesData ? JSON.parse(JSON.stringify(window.storiesData)) : null;
+                        const fn = new Function(code);
+                        fn();
+
+                        if (!window.storiesData || !Array.isArray(window.storiesData.stories) || window.storiesData.stories.length === 0) {
+                            window.storiesData = backup;
+                            showNotification('No stories found in this JS file.', 'error');
+                            return;
+                        }
+
+                        const stories = window.storiesData.stories;
+                        window.storiesData = backup;
+
+                        if (stories.length === 1) {
+                            loadStoryFromJS(stories[0]);
+                        } else {
+                            showStoryPickerModal(stories);
+                        }
+                    } catch (err) {
+                        console.error('JS file error:', err);
+                        showNotification('Error reading JS file: ' + err.message, 'error');
+                    }
+                };
+                jsReader.readAsText(file);
+                return;
+
             default:
                 showNotification('Unsupported file format. Please upload JSON or PDF.', 'error');
                 break;
@@ -2452,3 +2483,139 @@ async function init() {
     }
 }
 document.addEventListener('DOMContentLoaded', init);
+
+// ============================================================
+// 📚 JS Story Picker
+// ============================================================
+
+function loadStoryFromJS(story) {
+    const normalized = {
+        id: story.id || ('js-' + Date.now()),
+        title: story.title || 'Untitled',
+        level: story.level || '',
+        levelcefr: story.levelcefr || '',
+        author: story.author || '',
+        sound: story.sound || '',
+        cover: story.cover || '',
+        coverType: story.coverType || '',
+        content: Array.isArray(story.content) ? story.content : [],
+        dictionaries: Array.isArray(story.dictionaries) ? story.dictionaries : [],
+        wordCount: story.wordCount || 0,
+        isUserStory: false
+    };
+
+    showLevelElements();
+    saveUploadedStoryToStorage(normalized, {});
+
+    if (typeof loadDictionary === 'function' && normalized.dictionaries.length > 0) {
+        loadDictionary(normalized.dictionaries).then(() => displayStory(normalized)).catch(() => displayStory(normalized));
+    } else {
+        displayStory(normalized);
+    }
+
+    if (selectedFileName) selectedFileName.textContent = normalized.title;
+    showNotification('Now reading: "' + normalized.title + '"', 'success');
+}
+
+function showStoryPickerModal(stories) {
+    const existing = document.getElementById('jsStoryPickerModal');
+    if (existing) existing.remove();
+
+
+    const modal = document.createElement('div');
+    modal.id = 'jsStoryPickerModal';
+    modal.innerHTML = `
+        <div id="jsPickerOverlay" style="
+            position:fixed;inset:0;background:rgba(0,0,0,.5);
+            backdrop-filter:blur(4px);z-index:9000;"></div>
+        <div id="jsPickerBox">
+            <div id="jsPickerHeader">
+                <h3>
+                    <i class="fas fa-book-open" style="color:var(--primary)"></i>
+                    Select a Story
+                    <span style="font-weight:400;opacity:.55;font-size:.85rem;">(${stories.length})</span>
+                </h3>
+                <button id="jsPickerCloseBtn" title="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="jsPickerSearchWrap">
+                <div id="jsPickerSearchInner">
+                    <i class="fas fa-search"></i>
+                    <input id="jsPickerSearch" type="text" placeholder="Search stories..." autocomplete="off">
+                </div>
+            </div>
+            <div id="jsPickerGrid"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    renderPickerCards(stories, stories);
+
+    document.getElementById('jsPickerSearch').addEventListener('input', function () {
+        const q = this.value.toLowerCase().trim();
+        const filtered = q
+            ? stories.filter(s =>
+                (s.title || '').toLowerCase().includes(q) ||
+                (s.author || '').toLowerCase().includes(q) ||
+                (s.level || '').toLowerCase().includes(q))
+            : stories;
+        renderPickerCards(stories, filtered);
+    });
+
+    function closeModal() { modal.remove(); }
+    document.getElementById('jsPickerCloseBtn').addEventListener('click', closeModal);
+    document.getElementById('jsPickerOverlay').addEventListener('click', closeModal);
+    document.addEventListener('keydown', function onEsc(e) {
+        if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', onEsc); }
+    });
+}
+
+function renderPickerCards(allStories, filtered) {
+    const grid = document.getElementById('jsPickerGrid');
+    if (!grid) return;
+
+    if (filtered.length === 0) {
+        grid.innerHTML = `<div class="js-picker-empty">
+            <i class="fas fa-search"></i>No stories found</div>`;
+        return;
+    }
+
+    const levelColors = {
+        beginner: { bg: '#d1fae5', color: '#065f46' },
+        intermediate: { bg: '#fef3c7', color: '#92400e' },
+        advanced: { bg: '#fee2e2', color: '#991b1b' }
+    };
+
+    grid.innerHTML = filtered.map(story => {
+        const level = (story.level || '').toLowerCase();
+        const lc = levelColors[level] || { bg: 'var(--bg-secondary,#f3f4f6)', color: 'var(--text-light,#6b7280)' };
+        const realIdx = allStories.indexOf(story);
+
+        const coverHtml = (story.coverType === 'image' && story.cover)
+            ? `<img src="${story.cover}" alt="" onerror="this.parentElement.innerHTML='<i class=\'fas fa-book-open\'></i>'">`
+            : `<i class="fas fa-book-open"></i>`;
+
+        return `<div class="js-picker-card" data-idx="${realIdx}">
+            <div class="js-picker-cover">${coverHtml}</div>
+            <div class="js-picker-body">
+                <div class="js-picker-title">${story.title || 'Untitled'}</div>
+                <div class="js-picker-meta">
+                    ${level ? `<span class="js-picker-badge" style="background:${lc.bg};color:${lc.color};">${level}</span>` : ''}
+                    ${story.levelcefr ? `<span class="js-picker-badge" style="background:var(--bg-secondary,#f3f4f6);color:var(--text-light,#6b7280);">${story.levelcefr}</span>` : ''}
+                    ${story.wordCount ? `<span style="font-size:.65rem;color:var(--text-light,#9ca3af);display:flex;align-items:center;gap:2px;">
+                        <i class="fas fa-align-left" style="font-size:.58rem;"></i>${story.wordCount}w</span>` : ''}
+                </div>
+                ${story.author ? `<div class="js-picker-author"><i class="fas fa-user"></i>${story.author}</div>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.js-picker-card').forEach(card => {
+        card.addEventListener('click', function () {
+            const idx = parseInt(this.dataset.idx);
+            document.getElementById('jsStoryPickerModal').remove();
+            loadStoryFromJS(allStories[idx]);
+        });
+    });
+}

@@ -1,7 +1,7 @@
 
 let fontSize = 1.2; // rem
 let lineHeight = 1.8;
-let noTranslatedWords = false;
+let noTranslatedWords = true;
 let ttsLanguage = 'en'; // Default to English
 
 // settings
@@ -1081,22 +1081,7 @@ function updateTTSLanguageIndicator() {
     const indicator = document.createElement('span');
     indicator.id = 'tts-language-indicator';
     indicator.innerHTML = `<i class="fas fa-volume-up"></i> ${getLanguageName(ttsLang)}`;
-    indicator.style.cssText = `
-        font-size: 11px;
-        background: var(--primary);
-        color: white;
-        padding: 3px 8px;
-        border-radius: 12px;
-        margin-left: 5px;
-        opacity: 0.8;
-        cursor: pointer;
-        display: flex;
-        transition: opacity 0.2s;
-        overflow: hidden;
-       gap:5px;
-         justify-content: center;
-    align-items: center;
-    `;
+  
     indicator.title = `Text-to-Speech language: ${getLanguageName(ttsLang)}. Click to change in settings.`;
 
     // Add click handler to open settings
