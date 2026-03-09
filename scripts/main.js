@@ -1797,7 +1797,18 @@ PrintBtn.forEach(btn => {
 });
 
 function printPage() {
+    const upload = document.querySelector('.file-upload-section')?.closest('.container');
+    if (upload) upload.style.display = 'none';
+
+    // Set document title to story name (this becomes the print filename)
+    const originalTitle = document.title;
+    const storyName = document.getElementById('storyTitle')?.innerText?.trim() || 'Story';
+    document.title = storyName;
+
     window.print();
+
+    if (upload) upload.style.display = '';
+    document.title = originalTitle;
 }
 function copyStoryFast() {
     try {
