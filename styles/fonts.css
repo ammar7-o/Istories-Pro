@@ -1,7 +1,7 @@
 @font-face {
     font-family: 'BradleyHand';
     /* The name you will use in CSS */
-    src: url('../../../fonts/BradleyHandITCTT-Bold.ttf') format('truetype');
+    src: url('../../fonts/BradleyHandITCTT-Bold.ttf') format('truetype');
     /* Path to your font */
     font-weight: normal;
     font-style: normal;
@@ -9,7 +9,7 @@
 @font-face {
     font-family: 'Caveat';
     /* The name you will use in CSS */
-    src: url('../../../fonts/Caveat-Bold.ttf') format('truetype');
+    src: url('../../fonts/Caveat-Bold.ttf') format('truetype');
     /* Path to your font */
     font-weight: normal;
     font-style: normal;
@@ -17,7 +17,7 @@
 @font-face {
     font-family: 'PatrickHandSC';
     /* The name you will use in CSS */
-    src: url('../../../fonts/PatrickHandSC-Regular.ttf') format('truetype');
+    src: url('../../fonts/PatrickHandSC-Regular.ttf') format('truetype');
     /* Path to your font */
     font-weight: normal;
     font-style: normal;
@@ -25,7 +25,7 @@
 @font-face {
     font-family: 'Pnu';
     /* The name you will use in CSS */
-    src: url('../../../fonts/PNU-Bold.ttf') format('truetype');
+    src: url('../../fonts/PNU-Bold.ttf') format('truetype');
     /* Path to your font */
     font-weight: normal;
     font-style: normal;

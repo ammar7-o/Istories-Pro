@@ -8,6 +8,7 @@ let fontFamily = localStorage.getItem('fontFamily') || 'sans-serif'; // Add this
 let currentStory = null;
 let currentWordData = null;
 let dictionary = {};
+let userDictionariesCache = {};
 // Add this constant near the top with other constants
 const MAX_PAGES = 10; // Maximum number of pages to convert from PDF
 // Global variables for paragraph translation
@@ -124,6 +125,62 @@ if (storyFileInput) {
     storyFileInput.addEventListener('change', handleFileSelect);
 }
 
+// Navigation menu elements
+const toggleNav = document.getElementById("toggle-nav");
+const more = document.getElementById("more");
+// Navigation menu state
+let isMenuOpen = false;
+
+// =============== NAVIGATION MENU FUNCTIONS ===============
+function setupNavToggle() {
+    if (!toggleNav || !more) return;
+
+    console.log('Setting up navigation menu toggle...');
+
+    // Toggle menu
+    toggleNav.addEventListener("click", function (e) {
+        e.stopPropagation();
+        isMenuOpen = !isMenuOpen;
+        more.classList.toggle("open");
+        console.log('Menu toggled, isOpen:', isMenuOpen);
+    });
+
+    // Close menu when clicking anywhere
+    document.addEventListener("click", function () {
+        if (isMenuOpen) {
+            more.classList.remove("open");
+            isMenuOpen = false;
+            console.log('Menu closed by clicking outside');
+        }
+    });
+
+    // Prevent closing when clicking inside the menu
+    more.addEventListener("click", function (e) {
+        e.stopPropagation();
+    });
+
+    // Close menu on Escape key
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && isMenuOpen) {
+            more.classList.remove("open");
+            isMenuOpen = false;
+            console.log('Menu closed by Escape key');
+        }
+    });
+
+    // Close menu when clicking on any <a> inside the menu
+    const links = more.querySelectorAll("a");
+    links.forEach(link => {
+        link.addEventListener("click", function () {
+            more.classList.remove("open");
+            isMenuOpen = false;
+            console.log('Menu closed by clicking link');
+        });
+    });
+
+    console.log('Navigation menu toggle setup complete');
+}
+
 // Handle file selection
 async function handleFileSelect(event) {
     const file = event.target.files[0];
@@ -165,7 +222,7 @@ async function handleFileSelect(event) {
                         }
 
                         const uploadedStory = {
-                            id: 'uploaded-' + Date.now(),
+                            id: 'uploaded-' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
                             title: jsonData.title,
                             author: jsonData.author || 'Uploaded',
                             level: jsonData.level || 'beginner',
@@ -173,10 +230,13 @@ async function handleFileSelect(event) {
                             sound: jsonData.sound || '',
                             content: jsonData.content,
                             dictionaries: jsonData.dictionaries || [],
-                            isUserStory: true
+                            isUserStory: true,
+                            isUploaded: true,
+                            uploadDate: new Date().toISOString(),
+                            cover: jsonData.cover || '📤',
+                            coverType: jsonData.coverType || 'emoji',
+                            wordCount: jsonData.content.join(' ').split(/\s+/).length
                         };
-
-                        localStorage.removeItem('userDictionaries');
 
                         let dictionaryData = {};
 
@@ -203,9 +263,22 @@ async function handleFileSelect(event) {
                                 }
                             });
 
-                            const userDictionaries = {};
-                            userDictionaries[uploadedStory.id] = customDictionary;
-                            localStorage.setItem('userDictionaries', JSON.stringify(userDictionaries));
+                            // Save to storage (with fallback)
+                            if (typeof saveDictionaryForStory === 'function') {
+                                await saveDictionaryForStory(uploadedStory.id, customDictionary);
+                            }
+                            
+                            // Also update cache
+                            userDictionariesCache[uploadedStory.id] = customDictionary;
+
+                            // Save to localStorage as backup
+                            try {
+                                const existingDicts = JSON.parse(localStorage.getItem('userDictionaries') || '{}');
+                                existingDicts[uploadedStory.id] = customDictionary;
+                                localStorage.setItem('userDictionaries', JSON.stringify(existingDicts));
+                            } catch (e) {
+                                console.warn('Failed to save to localStorage:', e);
+                            }
 
                             for (const [word, data] of Object.entries(customDictionary)) {
                                 const standardKey = getStandardKey(word);
@@ -219,6 +292,20 @@ async function handleFileSelect(event) {
                                 await loadDictionary(uploadedStory.dictionaries);
                                 dictionaryData = { ...dictionary };
                             }
+                        }
+
+                        // Save story to storage (with fallback)
+                        if (typeof addStoryToStorage === 'function') {
+                            await addStoryToStorage(uploadedStory);
+                        }
+                        
+                        // Also save to localStorage for backward compatibility
+                        try {
+                            const existingStories = JSON.parse(localStorage.getItem('userStories') || '[]');
+                            existingStories.push(uploadedStory);
+                            localStorage.setItem('userStories', JSON.stringify(existingStories));
+                        } catch (e) {
+                            console.warn('Failed to save stories to localStorage:', e);
                         }
 
                         saveUploadedStoryToStorage(uploadedStory, dictionaryData);
@@ -252,28 +339,11 @@ async function handleFileSelect(event) {
                 // Show page selection modal
                 showPageSelectionModal(totalPages);
                 break;
-                showNotification('Analyzing PDF...', 'info');
-
-                // First, check the page count
-                if (typeof pdfjsLib === 'undefined') {
-                    await loadPdfJsLibrary();
-                }
-
-
-
-                // Store PDF data for later use
-                window.currentPdfFile = file;
-                window.currentPdfData = pdf;
-                window.currentTotalPages = totalPages;
-
-                // Show page selection modal
-                showPageSelectionModal(totalPages);
-                break;
 
 
             case 'js':
                 const jsReader = new FileReader();
-                jsReader.onload = (e) => {
+                jsReader.onload = async (e) => {
                     try {
                         const code = e.target.result;
                         const backup = window.storiesData ? JSON.parse(JSON.stringify(window.storiesData)) : null;
@@ -755,8 +825,29 @@ async function confirmPageSelection() {
         // Set empty level values for PDF
         pdfStory.level = '';
         pdfStory.levelcefr = '';
+        
+        // Add metadata for uploaded stories
+        pdfStory.isUserStory = true;
+        pdfStory.isUploaded = true;
+        pdfStory.uploadDate = new Date().toISOString();
+        pdfStory.cover = '📄';
+        pdfStory.coverType = 'emoji';
 
         console.log('PDF Story created with empty levels'); // Debug log
+
+        // Save to localforage (with fallback)
+        if (typeof addStoryToStorage === 'function') {
+            await addStoryToStorage(pdfStory);
+        }
+        
+        // Also save to localStorage as backup
+        try {
+            const existingStories = JSON.parse(localStorage.getItem('userStories') || '[]');
+            existingStories.push(pdfStory);
+            localStorage.setItem('userStories', JSON.stringify(existingStories));
+        } catch (e) {
+            console.warn('Failed to save to localStorage:', e);
+        }
 
         displayStory(pdfStory);
         saveUploadedStoryToStorage(pdfStory, {});
@@ -871,11 +962,16 @@ function getAggressiveKey(word) {
     return key.trim();
 }
 
-// Get user stories from localStorage
-function getUserStories() {
+// Get user stories from storage (async)
+async function getUserStories() {
     try {
-        const userStories = JSON.parse(localStorage.getItem('userStories')) || [];
-        return userStories;
+        if (typeof getUserStoriesFromStorage === 'function') {
+            const userStories = await getUserStoriesFromStorage();
+            return userStories;
+        } else {
+            // Fallback to localStorage
+            return JSON.parse(localStorage.getItem('userStories') || '[]');
+        }
     } catch (error) {
         console.error('Error loading user stories:', error);
         return [];
@@ -953,10 +1049,18 @@ async function loadDictionary(dictionaryPaths) {
 
 // Add this function to load user translations
 // Update the loadUserTranslations function
-function loadUserTranslations(storyId) {
+async function loadUserTranslations(storyId) {
     try {
-        // Get user dictionaries from localStorage
-        const userDictionaries = JSON.parse(localStorage.getItem('userDictionaries')) || {};
+        // Check cache first, then fallback to localforage
+        let userDictionaries = {};
+        if (Object.keys(userDictionariesCache).length > 0) {
+            userDictionaries = userDictionariesCache;
+        } else if (typeof getAllDictionaries === 'function') {
+            userDictionaries = await getAllDictionaries();
+        } else {
+            // Fallback to localStorage
+            userDictionaries = JSON.parse(localStorage.getItem('userDictionaries') || '{}');
+        }
 
         // Check if this story has custom translations
         const customDictionary = userDictionaries[storyId];
@@ -1212,8 +1316,7 @@ function makeWordsClickable(htmlString, options = {}) {
 
         // --- ج. البحث في القواميس المخصصة ---
         const storyInfo = getStoryIdFromUrl();
-        const userDictionaries = JSON.parse(localStorage.getItem('userDictionaries')) || {};
-        const customDictionary = userDictionaries[storyInfo.id];
+        const customDictionary = userDictionariesCache[storyInfo.id];
 
         if (customDictionary) {
             // البحث في القاموس المخصص بالمفتاح القياسي
@@ -1342,12 +1445,20 @@ function validateWordData(wordData) {
 }
 
 // Show dictionary popup
-function showDictionary(word, element, isTextSelection = false) {
+async function showDictionary(word, element, isTextSelection = false) {
     if (!word) return;
 
     // First, check if we have user translations for this story
     const storyInfo = getStoryIdFromUrl();
-    const userDictionaries = JSON.parse(localStorage.getItem('userDictionaries')) || {};
+    
+    // Get dictionaries with fallback
+    let userDictionaries = {};
+    if (typeof getAllDictionaries === 'function') {
+        userDictionaries = await getAllDictionaries();
+    } else {
+        userDictionaries = JSON.parse(localStorage.getItem('userDictionaries') || '{}');
+    }
+    
     const customDictionary = userDictionaries[storyInfo.id];
 
     let wordData = null;
@@ -2416,9 +2527,25 @@ function applyCustomJS() {
         }
     }
 }
+
 async function init() {
     try {
-        // STEP 0: Set global color variables
+        // STEP 0: Initialize storage and migrate if needed
+        console.log('Step 0: Initializing storage...');
+        if (typeof initStorage === 'function') {
+            await initStorage();
+        }
+
+        // Preload user dictionaries for fast access
+        console.log('Step 0.5: Preloading user dictionaries...');
+        if (typeof getAllDictionaries === 'function') {
+            userDictionariesCache = await getAllDictionaries();
+        } else {
+            // Fallback to localStorage
+            userDictionariesCache = JSON.parse(localStorage.getItem('userDictionaries') || '{}');
+        }
+
+        // Set global color variables
         window.selectedColor = localStorage.getItem('selectedColor') || '#4f46e5';
         window.selectedSecondaryColor = localStorage.getItem('selectedSecondaryColor') || '#10b981';
 
@@ -2434,7 +2561,7 @@ async function init() {
         if (window.selectedSecondaryColor) {
             applySecondaryColor(window.selectedSecondaryColor);
         }
-
+        setupNavToggle();
         loadFontSettings();
 
         // STEP 3: Initialize color selectors
@@ -2453,26 +2580,74 @@ async function init() {
         // Apply saved font family
         applyFontFamily();
 
-        // STEP 5: Check for saved uploaded story
-        const savedStory = loadUploadedStoryFromStorage();
+        // STEP 5: Check for userStory URL parameter (from stories-maker)
+        const urlParams = new URLSearchParams(window.location.search);
+        const isUserStory = urlParams.get('userStory') === 'true';
+        const storyId = urlParams.get('id');
 
-        if (savedStory && savedStory.story && savedStory.dictionary) {
-            // Load the saved story
-            dictionary = savedStory.dictionary;
-            displayStory(savedStory.story);
-            showNotification('Restored previous story', 'info');
-
-            // Update file name display
-            if (selectedFileName) {
-                selectedFileName.textContent = savedStory.story.title + ' (restored)';
+        if (isUserStory && storyId) {
+            // Load story from localStorage (set by stories-maker)
+            const currentReadingStory = localStorage.getItem('currentReadingStory');
+            
+            if (currentReadingStory) {
+                try {
+                    const storyData = JSON.parse(currentReadingStory);
+                    
+                    // Load dictionary if exists
+                    if (storyData.translations) {
+                        Object.entries(storyData.translations).forEach(([word, data]) => {
+                            const standardKey = getStandardKey(word);
+                            dictionary[standardKey] = {
+                                translation: typeof data === 'string' ? data : (data.translation || "No translation"),
+                                pos: (typeof data === 'object' && data.pos) || "unknown",
+                                definition: (typeof data === 'object' && data.definition) || `From story: ${storyData.title}`,
+                                example: (typeof data === 'object' && data.example) || "Word from user story",
+                                source: 'user_story'
+                            };
+                        });
+                    }
+                    
+                    // Clear the URL parameters
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    
+                    // Display the story
+                    displayStory(storyData);
+                    
+                    if (selectedFileName) {
+                        selectedFileName.textContent = storyData.title;
+                    }
+                    
+                    showNotification(`Reading: "${storyData.title}"`, 'success');
+                    
+                } catch (error) {
+                    console.error('Error loading story from URL:', error);
+                    showNotification('Error loading story', 'error');
+                }
+            } else {
+                showNotification('Story not found', 'error');
             }
         } else {
-            // Show welcome message if no saved story
-            storyTitle.textContent = 'Welcome!';
-            storyText.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-upload" style="font-size: 48px; color: var(--primary); margin-bottom: 20px;"></i><h3>Upload a Story to Begin Reading</h3><p>Click the "Browse Files" button above to select a JSON story file.</p></div>';
+            // STEP 5: Check for saved uploaded story
+            const savedStory = loadUploadedStoryFromStorage();
 
-            // Load empty dictionary
-            dictionary = {};
+            if (savedStory && savedStory.story && savedStory.dictionary) {
+                // Load the saved story
+                dictionary = savedStory.dictionary;
+                displayStory(savedStory.story);
+                showNotification('Restored previous story', 'info');
+
+                // Update file name display
+                if (selectedFileName) {
+                    selectedFileName.textContent = savedStory.story.title + ' (restored)';
+                }
+            } else {
+                // Show welcome message if no saved story
+                storyTitle.textContent = 'Welcome!';
+                storyText.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-upload" style="font-size: 48px; color: var(--primary); margin-bottom: 20px;"></i><h3>Upload a Story to Begin Reading</h3><p>Click the "Browse Files" button above to select a JSON story file.</p></div>';
+
+                // Load empty dictionary
+                dictionary = {};
+            }
         }
 
         // Update stats

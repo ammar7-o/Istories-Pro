@@ -162,6 +162,9 @@
     <link rel="preload" href="styles/main.css" as="style">
     <link rel="preload" href="font-awesome/css/all.min.css" as="style">
 
+    <!-- LocalForage for offline storage -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js" defer></script>
+
     <!-- Google Translate Widget -->
     <script type="text/javascript">
         function googleTranslateElementInit() {
@@ -196,14 +199,36 @@
     </div>
 
 
-    <header>
+    <header id="top">
         <div class="container">
             <div class="header-content">
-                <a href="../index.html" class="logo">
-                    <img src="icon.png" alt="">
-                    <span>IStories</span>
-                    <span class="pro" style="font-size: 1em; color: #f7df1e;">Pro</span>
-                </a>
+                <div class="left">
+                    <a href="../index.html" class="logo">
+                        <img src="icon.png" alt="">
+                        <span>IStories</span>
+                        <span class="pro" style="font-size: 1em; color: #f7df1e;">Pro</span>
+                    </a>
+                    <nav>
+                        <ul>
+                            <li> <a href="#" class="nav-btn active" title="Home"><i class="fas fa-home"
+                                        data-page="home"></i> </a>
+                            </li>
+                            <li><a href="#" title="more" id="toggle-nav"><i class="fas fa-bars"></i></a></li>
+                            <div id="more" class="more">
+
+
+                                <li><a class="nav-btn" href="vocabulary/index.html"><i class="fas fa-language"></i>
+                                        Vocabulary</a></li>
+                                <li><a class="nav-btn" href="stories-maker/index.html"><i
+                                            class="fa-solid fa-pen-to-square"></i>
+                                        Stories maker</a></li>
+
+                            </div>
+
+
+                        </ul>
+                    </nav>
+                </div>
                 <div class="header-actions">
 
                     <div class="settings-container">
@@ -213,6 +238,7 @@
                     </div>
                 </div>
             </div>
+        </div>
     </header>
     <div class="container">
         <div class="file-upload-section">
@@ -240,6 +266,8 @@
 
             <div id="fileError" class="error-message" style="color: #f44336; margin-top: 10px; display: none;"></div>
         </div>
+
+
     </div>
 
 
@@ -751,12 +779,13 @@
             </div>
         </div>
     </div>
-    
+
     <script>
         var idStory = 1;
     </script>
     <script src="scripts/print.min.js"></script>
     <link rel="stylesheet" href="styles/print.min.css">
+    <script src="scripts/storiesStorage.js"></script>
     <script type="module" src="scripts/main.js"></script>
     <script src="scripts/thems.js"></script>
     <script src="scripts/settings.js"></script>
