@@ -937,6 +937,9 @@ select {
     .reading-progress-bar {
         width: 100% !important;
     }
+nav {
+        display: none !important;
+    }
 
     /* ===== RESET BODY ===== */
     body {
